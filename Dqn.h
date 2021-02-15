@@ -1301,13 +1301,15 @@ DQN_API Dqn_isize Dqn_Safe_TruncateUSizeToISize(Dqn_usize val);
 // NOTE: Dqn_Char
 //
 // -------------------------------------------------------------------------------------------------
-DQN_API Dqn_b32     Dqn_Char_IsAlpha             (char ch);
-DQN_API Dqn_b32     Dqn_Char_IsDigit             (char ch);
-DQN_API Dqn_b32     Dqn_Char_IsAlphaNum          (char ch);
-DQN_API Dqn_b32     Dqn_Char_IsWhitespace        (char ch);
-DQN_API Dqn_b32     Dqn_Char_IsHex               (char ch);
-DQN_API Dqn_u8      Dqn_Char_HexToU8             (char ch);
-DQN_API char        Dqn_Char_ToLower             (char ch);
+DQN_API Dqn_b32 Dqn_Char_IsAlpha       (char ch);
+DQN_API Dqn_b32 Dqn_Char_IsDigit       (char ch);
+DQN_API Dqn_b32 Dqn_Char_IsAlphaNum    (char ch);
+DQN_API Dqn_b32 Dqn_Char_IsWhitespace  (char ch);
+DQN_API Dqn_b32 Dqn_Char_IsHex         (char ch);
+DQN_API Dqn_u8  Dqn_Char_HexToU8       (char ch);
+DQN_API char    Dqn_Char_ToHex         (char ch);
+DQN_API char    Dqn_Char_ToHexUnchecked(char ch);
+DQN_API char    Dqn_Char_ToLower       (char ch);
 
 // -------------------------------------------------------------------------------------------------
 //
@@ -3345,6 +3347,20 @@ DQN_API Dqn_u8 Dqn_Char_HexToU8(char ch)
         result = ch - 'A' + 10;
     else
         result = ch - '0';
+    return result;
+}
+
+char constexpr DQN_HEX_LUT[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+DQN_API char Dqn_Char_ToHex(char ch)
+{
+    char result = DQN_CAST(char)-1;
+    if (ch <= 16) result = DQN_HEX_LUT[ch];
+    return result;
+}
+
+DQN_API char Dqn_Char_ToHexUnchecked(char ch)
+{
+    char result = DQN_HEX_LUT[ch];
     return result;
 }
 
