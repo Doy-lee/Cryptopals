@@ -33,6 +33,16 @@ Dqn_String         Base64_U8ToString              (Dqn_u8 const *stream, Dqn_isi
 Dqn_Slice<Dqn_u8>  XorU8Slice                     (Dqn_Slice<Dqn_u8> const lhs, Dqn_Slice<Dqn_u8> const rhs, Dqn_Allocator *allocator);
 Dqn_Slice<Dqn_u8>  XorU8SliceWithByte             (Dqn_Slice<Dqn_u8> const lhs, char byte, Dqn_Allocator *allocator);
 
+struct SingleKeyXorCipher
+{
+    float             score;          // Score calculated from English letter frequency
+    Dqn_u8            key;            // The key used in this xor decode
+    Dqn_Slice<Dqn_u8> decoded_cipher; // The decoded cipher
+};
+
+// Brute-force a cipher that using a xor (single byte) key on a ascii hex string in 'hex'
+SingleKeyXorCipher SingleKeyXorBestGuess(Dqn_String hex, Dqn_Allocator *allocator);
+
 //
 // NOTE: Library Code
 //
@@ -232,10 +242,10 @@ Dqn_String Base64_U8ToString(Dqn_u8 const *stream, Dqn_isize size, Dqn_Allocator
             char bit6_03 = ((decode_chunk[1] & 0b00001111) << 2 | (decode_chunk[2] & 0b11000000) >> 6);
             char bit6_04 =  (decode_chunk[2] & 0b00111111);
 
-            result.str[result_index++] = BASE64_LUT[bit6_01];
-            result.str[result_index++] = BASE64_LUT[bit6_02];
-            result.str[result_index++] = BASE64_LUT[bit6_03];
-            result.str[result_index++] = BASE64_LUT[bit6_04];
+            result.str[result_index++] = BASE64_LUT[DQN_CAST(unsigned)bit6_01];
+            result.str[result_index++] = BASE64_LUT[DQN_CAST(unsigned)bit6_02];
+            result.str[result_index++] = BASE64_LUT[DQN_CAST(unsigned)bit6_03];
+            result.str[result_index++] = BASE64_LUT[DQN_CAST(unsigned)bit6_04];
         }
 
         // Pad the remainder with '='
@@ -265,6 +275,62 @@ Dqn_Slice<Dqn_u8> XorU8SliceWithByte(Dqn_Slice<Dqn_u8> const lhs, char byte, Dqn
     return result;
 }
 
+float CalculateXorCipherScore_(Dqn_Slice<Dqn_u8> decoded_cipher)
+{
+    float letter_frequency[256]         = {};
+    letter_frequency[DQN_CAST(int) 'a'] = 0.082f;
+    letter_frequency[DQN_CAST(int) 'b'] = 0.015f;
+    letter_frequency[DQN_CAST(int) 'c'] = 0.028f;
+    letter_frequency[DQN_CAST(int) 'd'] = 0.043f;
+    letter_frequency[DQN_CAST(int) 'e'] = 0.013f;
+    letter_frequency[DQN_CAST(int) 'f'] = 0.022f;
+    letter_frequency[DQN_CAST(int) 'g'] = 0.02f;
+    letter_frequency[DQN_CAST(int) 'h'] = 0.061f;
+    letter_frequency[DQN_CAST(int) 'i'] = 0.07f;
+    letter_frequency[DQN_CAST(int) 'j'] = 0.0015f;
+    letter_frequency[DQN_CAST(int) 'k'] = 0.0077f;
+    letter_frequency[DQN_CAST(int) 'l'] = 0.04f;
+    letter_frequency[DQN_CAST(int) 'm'] = 0.024f;
+    letter_frequency[DQN_CAST(int) 'n'] = 0.067f;
+    letter_frequency[DQN_CAST(int) 'o'] = 0.075f;
+    letter_frequency[DQN_CAST(int) 'p'] = 0.019f;
+    letter_frequency[DQN_CAST(int) 'q'] = 0.00095f;
+    letter_frequency[DQN_CAST(int) 'r'] = 0.06f;
+    letter_frequency[DQN_CAST(int) 's'] = 0.063f;
+    letter_frequency[DQN_CAST(int) 't'] = 0.091f;
+    letter_frequency[DQN_CAST(int) 'u'] = 0.028f;
+    letter_frequency[DQN_CAST(int) 'v'] = 0.0098f;
+    letter_frequency[DQN_CAST(int) 'w'] = 0.024f;
+    letter_frequency[DQN_CAST(int) 'x'] = 0.0015f;
+    letter_frequency[DQN_CAST(int) 'y'] = 0.02f;
+    letter_frequency[DQN_CAST(int) 'z'] = 0.00074f;
+    letter_frequency[DQN_CAST(int) ' '] = 0.010f; // NOTE: I randomly gave this a weight
+
+    float result = 0;
+    for (Dqn_u8 byte : decoded_cipher)
+        result += letter_frequency[DQN_CAST(int) byte];
+    return result;
+}
+
+SingleKeyXorCipher SingleKeyXorBestGuess(Dqn_String hex, Dqn_Allocator *allocator)
+{
+    Dqn_u8 const            KEY_SIZE = 255;
+    SingleKeyXorCipher      result   = {};
+    Dqn_Slice<Dqn_u8> const cipher   = Hex_StringToU8SliceUnchecked(hex, allocator);
+
+    for (Dqn_u16 key = 0; key < KEY_SIZE; key++)
+    {
+        Dqn_Slice<Dqn_u8>  xor_slice  = XorU8SliceWithByte(cipher, DQN_CAST(char) key, allocator);
+        SingleKeyXorCipher xor_cipher = {};
+        xor_cipher.decoded_cipher     = xor_slice;
+        xor_cipher.score              = CalculateXorCipherScore_(xor_slice);
+        xor_cipher.key                = DQN_CAST(char)key;
+        if (xor_cipher.score > result.score)
+            result = xor_cipher;
+    }
+
+    return result;
+}
 
 //
 // NOTE: Cryptopals Code
@@ -315,66 +381,39 @@ void Cryptopals_Set01_Challenge02()
                    DQN_SLICE_FMT(expected_bytes));
 }
 
-struct AsciiFrequency
-{
-    int characters;
-    int digits;
-    int spaces;
-    int grammar_particles;
-};
-
-int AsciiFrequency_Score(AsciiFrequency const *frequency)
-{
-    int result = frequency->characters + frequency->digits + frequency->spaces;
-    return result;
-}
-
 void Cryptopals_Set01_Challenge03()
 {
-    Dqn_String const CIPHER_TEXT = DQN_STRING("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
-
-    Dqn_u8 const      CIPHER_SIZE              = 255;
-    AsciiFrequency    frequencies[CIPHER_SIZE] = {};
-
-    int               best_score = 0;
-    Dqn_Slice<Dqn_u8> best_xor   = {};
-    int               best_key   = 0;
-
-    Dqn_Slice<Dqn_u8> const cipher = Hex_StringToU8SliceUnchecked(CIPHER_TEXT, &g_allocator);
-    for (Dqn_u8 key = 0; key < CIPHER_SIZE; key++)
-    {
-        Dqn_Slice<Dqn_u8> xor     = XorU8SliceWithByte(cipher, DQN_CAST(char)key, &g_allocator);
-        AsciiFrequency *frequency = frequencies + key;
-        for (Dqn_u8 byte : xor)
-        {
-            if (Dqn_Char_IsAlpha(byte))
-                frequency->characters++;
-            else if (Dqn_Char_IsDigit(byte))
-                frequency->digits++;
-            else if (byte == ' ')
-                frequency->spaces++;
-            else if ((byte >= '!' && byte <= '/') ||
-                     (byte >= ':' && byte <= '@') ||
-                     (byte >= '[' && byte <= '`') ||
-                     (byte >= '{' && byte <= '~'))
-            {
-                frequency->grammar_particles++;
-            }
-        }
-
-        int score = AsciiFrequency_Score(frequency);
-        if (score >= best_score)
-        {
-            best_score = score;
-            best_xor   = xor;
-            best_key   = key;
-        }
-    }
+    Dqn_String const CIPHER_TEXT  = DQN_STRING("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
+    SingleKeyXorCipher xor_cipher = SingleKeyXorBestGuess(CIPHER_TEXT, &g_allocator);
 
     DQN_LOG_I("[Challenge 3]");
     DQN_LOG_I("input       = %.*s", DQN_STRING_FMT(CIPHER_TEXT));
-    DQN_LOG_I("xor key     = %c (%d)", best_key, best_key);
-    DQN_LOG_I("cipher text = %.*s", DQN_SLICE_FMT(best_xor));
+    DQN_LOG_I("xor key     = %c (%d)", xor_cipher.key, xor_cipher.key);
+    DQN_LOG_I("cipher text = %.*s\n", DQN_SLICE_FMT(xor_cipher.decoded_cipher));
+}
+
+void Cryptopals_Set01_Challenge04()
+{
+    Dqn_String file = {};
+    file.str        = Dqn_File_ReadEntireFile("set01-challenge04.txt", &file.size, &g_allocator);
+
+    Dqn_Slice<Dqn_String> strings         = Dqn_String_Split(file, &g_allocator);
+    SingleKeyXorCipher    best_xor_cipher = {};
+    Dqn_String            cipher          = {};
+    for (Dqn_String line : strings)
+    {
+        SingleKeyXorCipher xor_cipher = SingleKeyXorBestGuess(line, &g_allocator);
+        if (xor_cipher.score > best_xor_cipher.score)
+        {
+            best_xor_cipher = xor_cipher;
+            cipher          = line;
+        }
+    }
+
+    DQN_LOG_I("[Challenge 4]");
+    DQN_LOG_I("input       = %.*s", DQN_STRING_FMT(cipher));
+    DQN_LOG_I("xor key     = %c (%d)", best_xor_cipher.key, best_xor_cipher.key);
+    DQN_LOG_I("cipher text = %.*s", DQN_SLICE_FMT(best_xor_cipher.decoded_cipher));
 }
 
 int main()
@@ -407,5 +446,8 @@ int main()
     Cryptopals_Set01_Challenge01();
     Cryptopals_Set01_Challenge02();
     Cryptopals_Set01_Challenge03();
+    Cryptopals_Set01_Challenge04();
+
+    Dqn_ArenaAllocator_DumpStatsToLog(&g_arena, "Global Arena");
     return 0;
 }
