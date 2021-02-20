@@ -346,6 +346,26 @@ Dqn_Slice<Dqn_u8> RepeatingKeyXor(Dqn_String key, Dqn_String data, Dqn_Allocator
     return result;
 }
 
+int HammingDistance(Dqn_String lhs, Dqn_String rhs)
+{
+    DQN_ASSERT_MSG(lhs.size == rhs.size, "lhs.size = %zu, rhs.size = %zu", lhs.size, rhs.size);
+
+    int result = 0;
+    for (Dqn_isize char_index = 0; char_index < lhs.size; char_index++)
+    {
+        char lhs_byte = lhs.str[char_index];
+        char rhs_byte = rhs.str[char_index];
+        for (Dqn_isize bit_index = 0; bit_index < 8; bit_index++)
+        {
+            char lhs_bit = ((lhs_byte >> bit_index) & 0b1);
+            char rhs_bit = ((rhs_byte >> bit_index) & 0b1);
+            result += (lhs_bit == rhs_bit) ? 0 : 1;
+        }
+    }
+
+    return result;
+}
+
 //
 // NOTE: Cryptopals Code
 //
@@ -471,6 +491,11 @@ int main()
         char const *result = Hex_U8ToCString("\xA", 1, &g_allocator);
         DQN_ASSERT_MSG(result[0] == '0', "result[0]=%c", result[0]);
         DQN_ASSERT_MSG(result[1] == 'a', "result[1]=%c", result[1]);
+    }
+
+    {
+        int result = HammingDistance(DQN_STRING("this is a test"), DQN_STRING("wokka wokka!!!"));
+        DQN_ASSERT_MSG(result == 37, "result = %d");
     }
 
     Cryptopals_Set01_Challenge01();
