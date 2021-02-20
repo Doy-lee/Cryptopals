@@ -41,7 +41,7 @@ struct SingleKeyXorCipher
 };
 
 // Brute-force a cipher that using a xor (single byte) key on a ascii hex string in 'hex'
-SingleKeyXorCipher SingleKeyXorBestGuess(Dqn_String hex, Dqn_Allocator *allocator);
+SingleKeyXorCipher SingleKeyXorCipher_BestGuess(Dqn_String hex, Dqn_Allocator *allocator);
 
 //
 // NOTE: Library Code
@@ -275,7 +275,7 @@ Dqn_Slice<Dqn_u8> XorU8SliceWithByte(Dqn_Slice<Dqn_u8> const lhs, char byte, Dqn
     return result;
 }
 
-float CalculateXorCipherScore_(Dqn_Slice<Dqn_u8> decoded_cipher)
+float SingleKeyXorCipher__CalculateScore(Dqn_Slice<Dqn_u8> decoded_cipher)
 {
     float letter_frequency[256]         = {};
     letter_frequency[DQN_CAST(int) 'a'] = 0.082f;
@@ -312,7 +312,7 @@ float CalculateXorCipherScore_(Dqn_Slice<Dqn_u8> decoded_cipher)
     return result;
 }
 
-SingleKeyXorCipher SingleKeyXorBestGuess(Dqn_String hex, Dqn_Allocator *allocator)
+SingleKeyXorCipher SingleKeyXorCipher_BestGuess(Dqn_String hex, Dqn_Allocator *allocator)
 {
     Dqn_u8 const            KEY_SIZE = 255;
     SingleKeyXorCipher      result   = {};
@@ -323,10 +323,24 @@ SingleKeyXorCipher SingleKeyXorBestGuess(Dqn_String hex, Dqn_Allocator *allocato
         Dqn_Slice<Dqn_u8>  xor_slice  = XorU8SliceWithByte(cipher, DQN_CAST(char) key, allocator);
         SingleKeyXorCipher xor_cipher = {};
         xor_cipher.decoded_cipher     = xor_slice;
-        xor_cipher.score              = CalculateXorCipherScore_(xor_slice);
+        xor_cipher.score              = SingleKeyXorCipher__CalculateScore(xor_slice);
         xor_cipher.key                = DQN_CAST(char)key;
         if (xor_cipher.score > result.score)
             result = xor_cipher;
+    }
+
+    return result;
+}
+
+Dqn_Slice<Dqn_u8> RepeatingKeyXor(Dqn_String key, Dqn_String data, Dqn_Allocator *allocator)
+{
+    Dqn_isize key_index = 0;
+    Dqn_Slice<Dqn_u8> result = Dqn_Slice_Allocate(allocator, Dqn_u8, data.size, Dqn_ZeroMem::No);
+    for (Dqn_isize data_index = 0; data_index < data.size; data_index++)
+    {
+        char xor_byte           = key.str[(key_index % key.size)];
+        result.data[data_index] = xor_byte ^ data.str[data_index];
+        key_index++;
     }
 
     return result;
@@ -384,7 +398,7 @@ void Cryptopals_Set01_Challenge02()
 void Cryptopals_Set01_Challenge03()
 {
     Dqn_String const CIPHER_TEXT  = DQN_STRING("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
-    SingleKeyXorCipher xor_cipher = SingleKeyXorBestGuess(CIPHER_TEXT, &g_allocator);
+    SingleKeyXorCipher xor_cipher = SingleKeyXorCipher_BestGuess(CIPHER_TEXT, &g_allocator);
 
     DQN_LOG_I("[Challenge 3]");
     DQN_LOG_I("input       = %.*s", DQN_STRING_FMT(CIPHER_TEXT));
@@ -402,7 +416,7 @@ void Cryptopals_Set01_Challenge04()
     Dqn_String            cipher          = {};
     for (Dqn_String line : strings)
     {
-        SingleKeyXorCipher xor_cipher = SingleKeyXorBestGuess(line, &g_allocator);
+        SingleKeyXorCipher xor_cipher = SingleKeyXorCipher_BestGuess(line, &g_allocator);
         if (xor_cipher.score > best_xor_cipher.score)
         {
             best_xor_cipher = xor_cipher;
@@ -414,6 +428,22 @@ void Cryptopals_Set01_Challenge04()
     DQN_LOG_I("input       = %.*s", DQN_STRING_FMT(cipher));
     DQN_LOG_I("xor key     = %c (%d)", best_xor_cipher.key, best_xor_cipher.key);
     DQN_LOG_I("cipher text = %.*s", DQN_SLICE_FMT(best_xor_cipher.decoded_cipher));
+}
+
+void Cryptopals_Set01_Challenge05()
+{
+    Dqn_String const INPUT = DQN_STRING(R"(Burning 'em, if you ain't quick and nimble
+I go crazy when I hear a cymbal)");
+    Dqn_String const XOR_KEY = DQN_STRING("ICE");
+
+    Dqn_Slice<Dqn_u8> cipher = RepeatingKeyXor(XOR_KEY, INPUT, &g_allocator);
+
+    Dqn_String const EXPECTED = DQN_STRING(R"(0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f)");
+    Dqn_String cipher_string = Hex_U8SliceToString(cipher, &g_allocator);
+
+    DQN_LOG_I("[Challenge 5]");
+    DQN_LOG_I("expected=%.*s", DQN_STRING_FMT(EXPECTED));
+    DQN_LOG_I("output  =%.*s", DQN_STRING_FMT(cipher_string));
 }
 
 int main()
@@ -447,6 +477,7 @@ int main()
     Cryptopals_Set01_Challenge02();
     Cryptopals_Set01_Challenge03();
     Cryptopals_Set01_Challenge04();
+    Cryptopals_Set01_Challenge05();
 
     Dqn_ArenaAllocator_DumpStatsToLog(&g_arena, "Global Arena");
     return 0;
